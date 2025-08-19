@@ -2,7 +2,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsNotEmpty, IsNumber, IsString } from "class-validator";
 
-export class CreatehealthUnitDto {
+export class CreateHealthUnitDto {
     
     @ApiProperty({
         description: 'Name of the health unit',

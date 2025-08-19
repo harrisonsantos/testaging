@@ -10,15 +10,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { toast } from "sonner";
+import useAuthStore from "@/stores/useAuthStore";
+import useUIStore from "@/stores/useUIStore";
 
 export default function SignInForm() {
+  const { login } = useAuthStore();
+  const { isLoading, setLoading } = useUIStore();
   const [showPassword, setShowPassword] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const [cpf, setCpf] = useState("");
   const [senha, setSenha] = useState("");
   const [cpfError, setCpfError] = useState(false);
   const [senhaError, setSenhaError] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // ⬅ novo estado
   const router = useRouter();
   const cpfRef = useRef(null);
   const senhaRef = useRef(null);
@@ -72,7 +75,7 @@ export default function SignInForm() {
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
 
     try {
       const result = await signIn("credentials", {
@@ -89,6 +92,7 @@ export default function SignInForm() {
 
       if (result.ok) {
         toast.success("Login realizado com sucesso!");
+        login({ cpf: rawCpf }, result.token);
         router.push("/home");
       } else {
         toast.error("CPF ou senha inválidos");
@@ -97,7 +101,7 @@ export default function SignInForm() {
       console.error("Erro ao logar:", err);
       toast.error("Erro ao tentar login.");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 

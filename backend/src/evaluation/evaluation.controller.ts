@@ -51,6 +51,21 @@ export class EvaluationController {
     return this.evaluationService.getSummaryByPerson(cpf);
   }
 
+  @Get('population/statistics')
+  getPopulationStatistics() {
+    return this.evaluationService.getPopulationStatistics();
+  }
+
+  @Get('population/benchmarks')
+  getPopulationBenchmarks() {
+    return this.evaluationService.getPopulationBenchmarks();
+  }
+
+  @Get('population/analysis')
+  getPopulationAnalysis() {
+    return this.evaluationService.getPopulationAnalysis();
+  }
+
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateEvaluationDto: UpdateEvaluationDto) {
     return this.evaluationService.update(+id, updateEvaluationDto);

@@ -1,8 +1,8 @@
 import { BelongsTo, Column, DataType, ForeignKey, HasMany, Model, Table } from "sequelize-typescript";
-import { SensorData } from "src/sensorData/entities/sensorData.entity";
-import { Patient } from "src/patient/entities/patient.entity";
-import { HealthProfessional } from "src/healthProfessional/entities/healthProfessional.entity";
-import { HealthUnit } from "src/healthUnit/entities/healthUnit.entity";
+import { SensorData } from "../../sensorData/entities/sensorData.entity";
+import { Patient } from "../../patient/entities/patient.entity";
+import { HealthProfessional } from "../../healthProfessional/entities/healthProfessional.entity";
+import { HealthUnit } from "../../healthUnit/entities/healthUnit.entity";
 
 @Table
 export class Evaluation extends Model {

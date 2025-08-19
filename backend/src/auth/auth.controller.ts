@@ -40,6 +40,16 @@ export class AuthController {
     };
   }
 
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  async logout(@Req() req: Request) {
+    const result = await this.authService.logout(req.user);
+    return { 
+      mensagem: 'Logout realizado com sucesso',
+      ...result 
+    };
+  }
+
   @Get('profile')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('doctor', 'researcher', 'patient')

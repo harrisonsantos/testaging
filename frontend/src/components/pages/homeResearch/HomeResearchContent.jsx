@@ -1,8 +1,8 @@
 import { useState } from "react";
 import HeaderCards from "./HeaderCards";
-import MonthlyEvaluationsChart from "../home/MonthlyEvaluationsChart";
+import MonthlyEvaluationsChart from "../homeHealth/MonthlyEvaluationsChart";
 import DataExport from "./DataExport";
-import StatisticsChart from "../home/StatisticsChart";
+import StatisticsChart from "../homeHealth/StatisticsChart";
 import Button from "@/components/ui/button/Button";
 import { ToggleGroup } from "@/components/ui/toggleButton/ToggleGroup";
 import { ToggleOption } from "@/components/ui/toggleButton/ToggleOption";

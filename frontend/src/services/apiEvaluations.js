@@ -21,4 +21,14 @@ export const api = {
   async getSummaryByCpf(cpf) {
     return httpFetch(`/evaluation/summary/person/${cpf}`, { method: 'GET' });
   },
+  // New endpoints for population analysis and benchmarks
+  async getPopulationStatistics() {
+    return httpFetch(`/evaluation/population/statistics`, { method: 'GET' });
+  },
+  async getPopulationBenchmarks() {
+    return httpFetch(`/evaluation/population/benchmarks`, { method: 'GET' });
+  },
+  async getPopulationAnalysis() {
+    return httpFetch(`/evaluation/population/analysis`, { method: 'GET' });
+  },
 };

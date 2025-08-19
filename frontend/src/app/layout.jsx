@@ -18,6 +18,10 @@ import { SidebarProvider } from '@/context/SidebarContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import Providers from "@/app/providers";
 import {Toaster} from "sonner";
+import QueryProvider from "@/lib/QueryProvider";
+import ErrorBoundary from "@/components/common/ErrorBoundary";
+import Loading from "@/components/common/Loading";
+import useUIStore from "@/stores/useUIStore";
 import { getServerSession } from 'next-auth';
 import { authOptions } from './api/auth/[...nextauth]/auth';
 
@@ -27,6 +31,7 @@ const outfit = Outfit({
 });
 
 export default async function RootLayout({ children }) {
+    const { isLoading } = useUIStore.getState();
 
     const session =
     process.env.NODE_ENV === "development"
@@ -47,12 +52,17 @@ export default async function RootLayout({ children }) {
     return (
         <html lang="en">
         <body className={`${outfit.className} dark:bg-gray-900`}>
-            <Providers session={session}>
-                <Toaster position="top-center" richColors />
-                <ThemeProvider>
-                    <SidebarProvider>{children}</SidebarProvider>
-                </ThemeProvider>
-            </Providers>
+            <ErrorBoundary>
+                <QueryProvider>
+                    <Providers session={session}>
+                        {isLoading && <Loading />}
+                        <Toaster position="top-center" richColors />
+                        <ThemeProvider>
+                            <SidebarProvider>{children}</SidebarProvider>
+                        </ThemeProvider>
+                    </Providers>
+                </QueryProvider>
+            </ErrorBoundary>
         </body>
         </html>
     );

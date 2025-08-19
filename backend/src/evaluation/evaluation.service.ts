@@ -2,15 +2,15 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateEvaluationDto } from './dto/create-evaluation.dto';
 import { UpdateEvaluationDto } from './dto/update-evaluation.dto';
 import { Evaluation } from './entities/evaluation.entity';
-import { InjectModel } from '@nestjs/sequelize';
-import { Patient } from 'src/patient/entities/patient.entity';
-import { HealthProfessional } from 'src/healthProfessional/entities/healthProfessional.entity';
-import { HealthUnit } from 'src/healthUnit/entities/healthUnit.entity';
-import { Person } from 'src/person/entities/person.entity';
-import { SensorData } from 'src/sensorData/entities/sensorData.entity';
+import { Patient } from '../patient/entities/patient.entity';
+import { HealthProfessional } from '../healthProfessional/entities/healthProfessional.entity';
+import { HealthUnit } from '../healthUnit/entities/healthUnit.entity';
+import { Person } from '../person/entities/person.entity';
+import { SensorData } from '../sensorData/entities/sensorData.entity';
 import { Op } from 'sequelize';
 import { MESSAGES } from 'src/common/constants/messages';
-
+import { BiomechanicalCalculationsService } from './biomechanical-calculations.service';
+import { EvaluationRepository } from './evaluation.repository';
 
 const evaluationDetailsInclude = [
     {
@@ -32,8 +32,8 @@ const evaluationDetailsInclude = [
 @Injectable()
 export class EvaluationService {
   constructor(
-    @InjectModel(Evaluation)
-    private readonly evaluationModel: typeof Evaluation,
+    private readonly evaluationRepository: EvaluationRepository,
+    private readonly biomechanicalCalculationsService: BiomechanicalCalculationsService,
   ) { }
 
   private formatEvaluationDetails(evaluation: Evaluation): any {
@@ -68,7 +68,7 @@ export class EvaluationService {
   async create(createEvaluationDto: Partial<CreateEvaluationDto>): Promise<Evaluation> {
     const { sensorData, ...evaluationData } = createEvaluationDto;
 
-    const createdEvaluation = await this.evaluationModel.create(
+    const createdEvaluation = await this.evaluationRepository.create(
       {
         ...evaluationData,
         sensorData: sensorData || [],
@@ -82,29 +82,56 @@ export class EvaluationService {
   }
 
   async findAll(): Promise<Evaluation[]> {
-    const evaluations = await this.evaluationModel.findAll({
-            include: evaluationDetailsInclude,
-            order: [['date', 'DESC']],
-        });
-        return evaluations.map(evaluation => this.formatEvaluationDetails(evaluation));
-    }
+    const evaluations = await this.evaluationRepository.findAll({
+      attributes: ['id', 'type', 'date', 'totalTime'],
+      include: [
+        {
+          model: Patient,
+          as: 'patient',
+          attributes: ['weight', 'height', 'dateOfBirth'],
+          include: [{ model: Person, as: 'person', attributes: ['name', 'gender'] }],
+        },
+        {
+          model: HealthProfessional,
+          as: 'healthProfessional',
+          attributes: ['email'],
+          include: [{ model: Person, as: 'person', attributes: ['name'] }],
+        },
+        { model: HealthUnit, as: 'healthUnit', attributes: ['name'] },
+      ],
+      order: [['date', 'DESC']],
+    });
+    return evaluations.map(this.formatEvaluationDetails);
+  }
 
   async findAllByPerson(cpf: string): Promise<Evaluation[]> {
-    const evaluations = await this.evaluationModel.findAll({
+    const evaluations = await this.evaluationRepository.findAll({
       where: {
-        [Op.or]: [
-            { cpfHealthProfessional: cpf },
-            { cpfPatient: cpf },
-        ],
-    },
-    include: evaluationDetailsInclude,
-    order: [['date', 'DESC']],
+        [Op.or]: [{ cpfHealthProfessional: cpf }, { cpfPatient: cpf }],
+      },
+      attributes: ['id', 'type', 'date', 'totalTime'],
+      include: [
+        {
+          model: Patient,
+          as: 'patient',
+          attributes: ['weight', 'height', 'dateOfBirth'],
+          include: [{ model: Person, as: 'person', attributes: ['name', 'gender'] }],
+        },
+        {
+          model: HealthProfessional,
+          as: 'healthProfessional',
+          attributes: ['email'],
+          include: [{ model: Person, as: 'person', attributes: ['name'] }],
+        },
+        { model: HealthUnit, as: 'healthUnit', attributes: ['name'] },
+      ],
+      order: [['date', 'DESC']],
     });
-    return evaluations.map(evaluation => this.formatEvaluationDetails(evaluation));
+    return evaluations.map(this.formatEvaluationDetails);
   }
   
   async findOneByPerson(cpf: string, id: number): Promise<Evaluation> {
-    const evaluation = await this.evaluationModel.findOne({
+    const evaluation = await this.evaluationRepository.findOne({
       where: {
         [Op.or]: [
           { cpfHealthProfessional: cpf },
@@ -120,7 +147,7 @@ export class EvaluationService {
   }
 
   async findOne(id: number): Promise<Evaluation> {
-    const evaluation = await this.evaluationModel.findByPk(id);
+    const evaluation = await this.evaluationRepository.findById(id);
     if (!evaluation) {
       throw new NotFoundException('Avaliação não encontrada');
     }
@@ -128,7 +155,7 @@ export class EvaluationService {
   }
 
   async findOneWithDetails(id: number): Promise<any> {
-    const evaluation = await this.evaluationModel.findOne({
+    const evaluation = await this.evaluationRepository.findOne({
       where: { id },
       attributes: [
         'id',
@@ -227,8 +254,8 @@ export class EvaluationService {
   }
 
   async getAnalytics(id: number): Promise<any> {
-    // Carrega avaliação com paciente para idade
-    const evaluation = await this.evaluationModel.findOne({
+    // Load evaluation with patient for age calculation
+    const evaluation = await this.evaluationRepository.findOne({
       where: { id },
       include: [
         { model: Patient, as: 'patient', include: [{ model: Person, as: 'person' }] },
@@ -240,66 +267,37 @@ export class EvaluationService {
     if (!evaluation) throw new NotFoundException(MESSAGES.EVALUATION.NOT_FOUND);
 
     const sensorData: SensorData[] = (evaluation as any).sensorData ?? [];
-    const tipo = evaluation.type as 'TUG' | '5TSTS';
-    if (!sensorData.length) return { indicators: [], classification: 'N/A' };
-
-    const t0 = new Date(sensorData[0].time).getTime();
-    const tN = new Date(sensorData[sensorData.length - 1].time).getTime();
-    const tempo = (tN - t0) / 1000;
-
-    const accelNorm = sensorData.map((d) => Math.sqrt(d.accel_x ** 2 + d.accel_y ** 2 + d.accel_z ** 2));
-    const media = accelNorm.reduce((sum, v) => sum + v, 0) / accelNorm.length;
-    const potencia = Math.sqrt(accelNorm.reduce((sum, v) => sum + v ** 2, 0) / accelNorm.length);
-    const fadiga = Math.sqrt(accelNorm.reduce((sum, v) => sum + (v - media) ** 2, 0) / accelNorm.length);
-    const ladoPositivo = sensorData.filter((d) => d.accel_x >= 0).length;
-    const ladoNegativo = sensorData.filter((d) => d.accel_x < 0).length;
-    const simetria = Math.abs(ladoPositivo - ladoNegativo) / sensorData.length;
-    const idade = evaluation.patient ? this.calcularIdade((evaluation.patient as any).dateOfBirth, evaluation.date) : 0;
-    const tempoClassificacao = this.classificarTempoPorIdade(tempo, idade, tipo);
-
-    function classificar(valor: number, faixas: Array<[number, number, string]>) {
-      for (const [min, max, label] of faixas) if (valor >= min && valor <= max) return label;
-      return 'Desconhecido';
+    const evaluationType = evaluation.type as 'TUG' | '5TSTS';
+    
+    if (!sensorData.length) {
+      return { indicators: [], classification: 'N/A' };
     }
 
-    let indicators: Array<{ name: string; value: number; maxValue: number; classificacao: string }> = [];
-    if (tipo === '5TSTS') {
-      indicators = [
-        { name: 'Tempo', value: Number(tempo.toFixed(2)), maxValue: 60, classificacao: tempoClassificacao },
-        { name: 'Potência', value: Number(potencia.toFixed(2)), maxValue: 20, classificacao: classificar(potencia, [[15, Infinity, 'Excelente'], [12, 14.99, 'Bom'], [9, 11.99, 'Regular'], [6, 8.99, 'Ruim'], [0, 5.99, 'Crítico']]) },
-        { name: 'Fadiga', value: Number(fadiga.toFixed(2)), maxValue: 10, classificacao: classificar(fadiga, [[0, 2, 'Excelente'], [2.01, 4, 'Bom'], [4.01, 6, 'Regular'], [6.01, 8, 'Ruim'], [8.01, Infinity, 'Crítico']]) },
-        { name: 'Simetria', value: Number((simetria * 10).toFixed(2)), maxValue: 10, classificacao: classificar(simetria * 10, [[0, 2, 'Excelente'], [2.01, 4, 'Bom'], [4.01, 6, 'Regular'], [6.01, 8, 'Ruim'], [8.01, Infinity, 'Crítico']]) },
-      ];
-    } else {
-      const distancia = 3;
-      const velocidade = distancia / tempo;
-      let passos = 0;
-      let lastStepTime = t0;
-      for (let i = 1; i < accelNorm.length - 1; i++) {
-        const v = accelNorm[i];
-        const t = new Date((sensorData as any)[i].time).getTime();
-        if (v > accelNorm[i - 1] && v > accelNorm[i + 1] && v > media * 1.1 && t - lastStepTime > 300) {
-          passos++;
-          lastStepTime = t;
-        }
-      }
-      const cadencia = (passos / tempo) * 60;
-      const equilibrio = 10 - Math.min(10, sensorData.reduce((acc, d) => acc + Math.abs(d.gyro_z), 0) / sensorData.length * 10);
-      const transicao = Math.max(...sensorData.map((d) => Math.abs(d.accel_z)));
-      indicators = [
-        { name: 'Velocidade da marcha', value: Number(velocidade.toFixed(2)), maxValue: 2, classificacao: classificar(velocidade, [[1.2, Infinity, 'Excelente'], [1.0, 1.19, 'Bom'], [0.8, 0.99, 'Regular'], [0.6, 0.79, 'Ruim'], [0, 0.59, 'Crítico']]) },
-        { name: 'Cadência', value: Number(cadencia.toFixed(2)), maxValue: 150, classificacao: classificar(cadencia, [[100, Infinity, 'Excelente'], [80, 99.99, 'Bom'], [60, 79.99, 'Regular'], [40, 59.99, 'Ruim'], [0, 39.99, 'Crítico']]) },
-        { name: 'Equilíbrio', value: Number(equilibrio.toFixed(1)), maxValue: 10, classificacao: classificar(equilibrio, [[8, 10, 'Excelente'], [6, 7.99, 'Bom'], [4, 5.99, 'Regular'], [2, 3.99, 'Ruim'], [0, 1.99, 'Crítico']]) },
-        { name: 'Transição', value: Number(transicao.toFixed(2)), maxValue: 20, classificacao: classificar(transicao, [[0, 4, 'Excelente'], [4.01, 6, 'Bom'], [6.01, 8, 'Regular'], [8.01, 10, 'Ruim'], [10.01, Infinity, 'Crítico']]) },
-      ];
-    }
+    // Calculate patient age
+    const patientAge = evaluation.patient?.dateOfBirth 
+      ? this.biomechanicalCalculationsService.calculateAge(
+          new Date(evaluation.patient.dateOfBirth), 
+          new Date(evaluation.date)
+        )
+      : 0;
 
-    const classification = this.classificarDesempenhoGeral(indicators.map((i) => i.classificacao));
-    return { indicators, classification };
+    // Use the new biomechanical calculations service
+    const analysis = this.biomechanicalCalculationsService.calculateBiomechanicalIndicators(
+      sensorData,
+      evaluationType,
+      patientAge,
+      new Date(evaluation.date)
+    );
+
+    return {
+      indicators: analysis.indicators,
+      classification: analysis.classification,
+      summary: analysis.summary
+    };
   }
 
   async getSummaryByPerson(cpf: string): Promise<any> {
-    const evaluations = await this.evaluationModel.findAll({ where: { [Op.or]: [{ cpfPatient: cpf }, { cpfHealthProfessional: cpf }] } });
+    const evaluations = await this.evaluationRepository.findAll({ where: { [Op.or]: [{ cpfPatient: cpf }, { cpfHealthProfessional: cpf }] } });
     if (!evaluations.length) return { countsByMonth: Array(12).fill(0), totalTime: '0 s', avgDuration: '0s', classification: 'N/A' };
 
     const counts = Array(12).fill(0);
@@ -324,23 +322,66 @@ export class EvaluationService {
     return { countsByMonth: counts, totalTime: tempoFormatado, avgDuration, classification };
   }
 
+  async getPopulationStatistics(): Promise<any> {
+    const statistics = await this.evaluationRepository.findAll({
+      attributes: [
+        [this.evaluationRepository.sequelize.fn('COUNT', this.evaluationRepository.sequelize.col('id')), 'totalEvaluations'],
+        [this.evaluationRepository.sequelize.fn('AVG', this.evaluationRepository.sequelize.col('totalTime')), 'averageTime'],
+        [this.evaluationRepository.sequelize.fn('SUM', this.evaluationRepository.sequelize.col('totalTime')), 'totalTime'],
+      ],
+    });
+    return statistics[0];
+  }
 
-  update(id: number, updateEvaluationDto: UpdateEvaluationDto) {
-    return this.evaluationModel.findByPk(id).then(async (evaluation) => {
+  async getPopulationBenchmarks(): Promise<any> {
+    const benchmarks = await this.evaluationRepository.findAll({
+      attributes: [
+        'type',
+        [this.evaluationRepository.sequelize.fn('AVG', this.evaluationRepository.sequelize.col('totalTime')), 'averageTime'],
+      ],
+      group: ['type'],
+    });
+    return benchmarks;
+  }
+
+  async getPopulationAnalysis(): Promise<any> {
+    const analysis = await this.evaluationRepository.findAll({
+      attributes: [
+        'type',
+        [this.evaluationRepository.sequelize.fn('COUNT', this.evaluationRepository.sequelize.col('id')), 'count'],
+        [this.evaluationRepository.sequelize.fn('AVG', this.evaluationRepository.sequelize.col('totalTime')), 'averageTime'],
+      ],
+      group: ['type'],
+    });
+    return analysis;
+  }
+
+  private getAgeGroup(age: number): string {
+    if (age < 30) return '20-29';
+    if (age < 40) return '30-39';
+    if (age < 50) return '40-49';
+    if (age < 60) return '50-59';
+    if (age < 70) return '60-69';
+    if (age < 80) return '70-79';
+    return '80+';
+  }
+
+  async update(id: number, updateEvaluationDto: UpdateEvaluationDto) {
+    return this.evaluationRepository.findById(id).then(async (evaluation) => {
       if (!evaluation) {
         throw new NotFoundException(MESSAGES.EVALUATION.NOT_FOUND);
       }
-      await evaluation.update(updateEvaluationDto as any);
+      await this.evaluationRepository.update(updateEvaluationDto as any, {where: {id: id}});
       return this.findOne(evaluation.id);
     });
   }
 
   remove(id: number) {
-    return this.evaluationModel.findByPk(id).then(async (evaluation) => {
+    return this.evaluationRepository.findById(id).then(async (evaluation) => {
       if (!evaluation) {
         throw new NotFoundException(MESSAGES.EVALUATION.NOT_FOUND);
       }
-      await evaluation.destroy();
+      await this.evaluationRepository.destroy({where: {id: id}});
       return { mensagem: 'Avaliação removida com sucesso' };
     });
   }

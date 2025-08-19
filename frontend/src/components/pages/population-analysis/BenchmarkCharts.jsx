@@ -6,16 +6,11 @@ import { api } from '@/services/apiEvaluations';
 
 const ReactECharts = dynamic(() => import('echarts-for-react'), { ssr: false });
 
-export default function PopulationAnalysisPage() {
-    const [evaluations, setEvaluations] = useState([]);
-    const [sensorDataByEval, setSensorDataByEval] = useState({});
-    const [loading, setLoading] = useState(true);
-
-    const groupedBySex = useMemo(() => groupBy(evaluations, e => e.patient?.gender || 'Indefinido'), [evaluations]);
-
-    const sexKeys = Object.keys(groupedBySex);
-    const sexColors = { F: '#e74c3c', M: '#3498db' };
+export default function BenchmarkCharts({ gruposSexo, gruposIdade }) {
     const [labelColor, setLabelColor] = useState('#000');
+    
+    const sexKeys = Object.keys(gruposSexo || {});
+    const sexColors = { F: '#e74c3c', M: '#3498db' };
 
     const radarIndicatorsByType = {
         '5TSTS': [
@@ -44,156 +39,30 @@ export default function PopulationAnalysisPage() {
         return () => observer.disconnect();
     }, []);
 
-    useEffect(() => {
-        const fetchAllData = async () => {
-            try {
-                const allEvaluations = await api.getEvaluations();
-                setEvaluations(allEvaluations);
 
-                const sensorMap = Object.fromEntries(allEvaluations.map(e => [e.id, e.sensorData]));
-                setSensorDataByEval(sensorMap);
-                setLoading(false);
-            } catch (err) {
-                console.error(err);
-                setLoading(false);
-            }
-        };
-
-        fetchAllData();
-    }, []);
-
-    function getAverageTime(evals, sensorData, type) {
-        const filtered = type ? evals.filter(e => e.type === type) : evals;
-        let total = 0;
-        let count = 0;
-        for (const e of filtered) {
-            if (!sensorData[e.id] || !e.totalTime) continue;
-            const parts = e.totalTime.split(':').map(Number);
-            const seconds = parts?.[1] ?? 0;
-            total += seconds;
-            count++;
-        }
-        return count ? parseFloat((total / count).toFixed(2)) : 0;
-    }
 
     function buildBarDataBySex(type) {
         return sexKeys.map(sex => ({
-            value: getAverageTime(groupedBySex[sex] ?? [], sensorDataByEval, type),
+            value: gruposSexo[sex]?.[type] || 0,
             itemStyle: { color: sexColors[sex] || '#95a5a6' },
         }));
     }
 
     function getRadarDataByType(type) {
-        const grouped = groupBy(
-            evaluations.filter(e => e.type === type),
-            e => {
-                const birth = e.patient?.dateOfBirth;
-                if (!birth) return 'Indefinido';
-                return getAgeGroup(getAgeFromBirth(birth));
-            }
-        );
-
-        return Object.entries(grouped).map(([group, evals]) => {
-            const resultados = evals.map(e => calcularIndicadores(sensorDataByEval[e.id], type)).filter(Boolean);
-            if (!resultados.length) return { name: group, value: radarIndicatorsByType[type].map(() => 0) };
-
-            const soma = {};
-            resultados.forEach(radar => {
-                radar.forEach(({ name, value }) => {
-                    soma[name] = (soma[name] || 0) + value;
-                });
-            });
-
-            const media = radarIndicatorsByType[type].map(({ name }) =>
-                parseFloat((soma[name] / resultados.length).toFixed(2))
-            );
-
-            return { name: group, value: media };
-        });
+        // Use the pre-calculated data from backend
+        const ageGroups = Object.keys(gruposIdade || {});
+        return ageGroups.map(group => ({
+            name: group,
+            value: [
+                gruposIdade[group]?.[type] || 0, // Time
+                0, // Power (placeholder - would need to be added to backend)
+                0, // Fatigue (placeholder - would need to be added to backend)
+                0, // Symmetry/Balance (placeholder - would need to be added to backend)
+            ]
+        }));
     }
 
-    function calcularIndicadores(sensorData, tipo = '5TSTS') {
-        if (!sensorData || sensorData.length === 0) return null;
 
-        if (!Array.isArray(sensorData) || sensorData.length < 2) return null;
-
-        sensorData.sort((a, b) => new Date(a.time) - new Date(b.time));
-
-        const t0 = new Date(sensorData[0].time).getTime();
-        const tN = new Date(sensorData[sensorData.length - 1].time).getTime();
-
-        if (isNaN(t0) || isNaN(tN)) {
-            console.warn('Timestamp inválido:', sensorData[0].time, sensorData[sensorData.length - 1].time);
-            return null;
-        }
-
-        const tempo = (tN - t0) / 1000;
-        if (tempo < 0) {
-            console.warn('Tempo negativo:', tempo, 'sensorData:', sensorData);
-            return null;
-        }
-
-        const accelNorm = sensorData.map(d =>
-            Math.sqrt(d.accel_x ** 2 + d.accel_y ** 2 + d.accel_z ** 2)
-        );
-
-        const media = accelNorm.reduce((sum, v) => sum + v, 0) / accelNorm.length;
-        const potencia = Math.sqrt(
-            accelNorm.reduce((sum, v) => sum + v ** 2, 0) / accelNorm.length
-        );
-        const fadiga = Math.sqrt(
-            accelNorm.reduce((sum, v) => sum + (v - media) ** 2, 0) / accelNorm.length
-        );
-
-        if (tipo === '5TSTS') {
-            const ladoPositivo = sensorData.filter(d => d.accel_x >= 0).length;
-            const ladoNegativo = sensorData.filter(d => d.accel_x < 0).length;
-            const simetria = Math.abs(ladoPositivo - ladoNegativo) / sensorData.length;
-
-            return [
-                { name: 'Tempo', value: Number(tempo.toFixed(2)) },
-                { name: 'Potência', value: Number(potencia.toFixed(2)) },
-                { name: 'Fadiga', value: Number(fadiga.toFixed(2)) },
-                { name: 'Simetria', value: Number((simetria * 10).toFixed(2)) },
-            ];
-        }
-
-        if (tipo === 'TUG') {
-            if (tempo <= 0.5) return null;
-
-            const distancia = 3;
-            const velocidade = distancia / tempo;
-
-            let passos = 0;
-            let lastStepTime = t0;
-            for (let i = 1; i < accelNorm.length - 1; i++) {
-                const v = accelNorm[i];
-                const t = new Date(sensorData[i].time).getTime();
-                if (
-                    v > accelNorm[i - 1] &&
-                    v > accelNorm[i + 1] &&
-                    v > media * 1.1 &&
-                    (t - lastStepTime) > 300
-                ) {
-                    passos++;
-                    lastStepTime = t;
-                }
-            }
-
-            const cadencia = Math.min((passos / tempo) * 60, 200);
-            const equilibrio = 10 - Math.min(10, sensorData.reduce((acc, d) => acc + Math.abs(d.gyro_z), 0) / sensorData.length * 10);
-            const transicao = Math.min(Math.max(...sensorData.map(d => Math.abs(d.accel_z))), 20);
-
-            return [
-                { name: 'Velocidade da marcha', value: Number(velocidade.toFixed(2)) },
-                { name: 'Cadência', value: Number(cadencia.toFixed(2)) },
-                { name: 'Equilíbrio', value: Number(equilibrio.toFixed(1)) },
-                { name: 'Transição', value: Number(transicao.toFixed(2)) },
-            ];
-        }
-
-        return null;
-    }
 
     function getAgeFromBirth(dateOfBirth) {
         const today = new Date();
@@ -206,21 +75,7 @@ export default function PopulationAnalysisPage() {
         return age;
     }
 
-    function getAgeGroup(age) {
-        if (age < 20) return '0-19';
-        if (age < 40) return '20-39';
-        if (age < 60) return '40-59';
-        return '60+';
-    }
 
-    function groupBy(arr, keyGetter) {
-        return arr.reduce((acc, item) => {
-            const key = typeof keyGetter === 'function' ? keyGetter(item) : item[keyGetter];
-            if (!acc[key]) acc[key] = [];
-            acc[key].push(item);
-            return acc;
-        }, {});
-    }
 
     const optionBar5TSTS = {
         title: { text: 'Tempo médio por sexo – 5TSTS', left: 'center', textStyle: { color: labelColor }},

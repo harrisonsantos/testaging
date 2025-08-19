@@ -8,24 +8,23 @@ import BenchmarkCharts from '@/components/pages/population-analysis/BenchmarkCha
 import {Skeleton} from "@mui/material";
 
 export default function PopulationAnalysisPage() {
-    const [evaluations, setEvaluations] = useState([]);
-    const [sensorDataByEval, setSensorDataByEval] = useState({});
+    const [populationAnalysis, setPopulationAnalysis] = useState(null);
+    const [populationBenchmarks, setPopulationBenchmarks] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchAllData = async () => {
             try {
-                const allEvaluations = await api.getEvaluations();
-                setEvaluations(allEvaluations);
-
-                const sensorMap = Object.fromEntries(
-                    allEvaluations.map(e => [e.id, e.sensorData])
-                );
-
-                setSensorDataByEval(sensorMap);
+                const [analysis, benchmarks] = await Promise.all([
+                    api.getPopulationAnalysis(),
+                    api.getPopulationBenchmarks()
+                ]);
+                
+                setPopulationAnalysis(analysis);
+                setPopulationBenchmarks(benchmarks);
                 setLoading(false);
             } catch (err) {
-                console.error(err);
+                console.error('Error fetching population data:', err);
                 setLoading(false);
             }
         };
@@ -33,118 +32,13 @@ export default function PopulationAnalysisPage() {
         fetchAllData();
     }, []);
 
-    function getAgeFromBirth(dateOfBirth) {
-        const today = new Date();
-        const birthDate = new Date(dateOfBirth);
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const m = today.getMonth() - birthDate.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-            age--;
-        }
-        return age;
-    }
-
-    function classifyAgeGroup(age) {
-        if (age < 60) return '40–59';
-        if (age < 70) return '60–69';
-        if (age < 80) return '70–79';
-        return '80+';
-    }
-
-    function agruparPorSexo(evaluations) {
-        const grupos = { M: [], F: [] };
-        for (const e of evaluations) {
-            if (e.patient?.gender && grupos[e.patient.gender]) {
-                grupos[e.patient.gender].push(e);
-            }
-        }
-        return grupos;
-    }
-
-    function agruparPorFaixaEtaria(evaluations) {
-        const grupos = {};
-        for (const e of evaluations) {
-            const idade = getAgeFromBirth(e.patient.dateOfBirth);
-            const faixa = classifyAgeGroup(idade);
-            if (!grupos[faixa]) grupos[faixa] = [];
-            grupos[faixa].push(e);
-        }
-        return grupos;
-    }
-
-    function calcularIndicadoresPorTipo(tipo) {
-        let total = {
-            tempo: 0,
-            potencia: 0,
-            fadiga: 0,
-            velocidade: 0,
-            cadencia: 0,
-        };
-        let count = 0;
-
-        evaluations.forEach((e) => {
-            if (e.type !== tipo) return;
-
-            const data = sensorDataByEval?.[e.id];
-            if (!Array.isArray(data) || data.length === 0) return;
-
-
-            const tempo = Number(e.totalTime.split(':')[1] || 0);
-            const accelNorm = data?.map(d => Math.sqrt(d.accel_x ** 2 + d.accel_y ** 2 + d.accel_z ** 2)) || [];
-            if (accelNorm.length === 0) return;
-
-            const media = accelNorm.reduce((sum, v) => sum + v, 0) / accelNorm.length;
-            const potencia = Math.sqrt(accelNorm.reduce((sum, v) => sum + v ** 2, 0) / accelNorm.length);
-            const fadiga = Math.sqrt(accelNorm.reduce((sum, v) => sum + (v - media) ** 2, 0) / accelNorm.length);
-
-            let velocidade = 0;
-            let cadencia = 0;
-
-            if (tipo === 'TUG') {
-                const distancia = 3;
-                velocidade = distancia / tempo;
-
-                let passos = 0;
-                let lastStepTime = new Date(data[0].time).getTime();
-                for (let i = 1; i < accelNorm.length - 1; i++) {
-                    const v = accelNorm[i];
-                    const t = new Date(data[i].time).getTime();
-                    if (
-                        v > accelNorm[i - 1] &&
-                        v > accelNorm[i + 1] &&
-                        v > media * 1.1 &&
-                        (t - lastStepTime) > 300
-                    ) {
-                        passos++;
-                        lastStepTime = t;
-                    }
-                }
-
-                cadencia = (passos / tempo) * 60;
-            }
-
-            total.tempo += tempo;
-            total.potencia += potencia;
-            total.fadiga += fadiga;
-            total.velocidade += velocidade;
-            total.cadencia += cadencia;
-            count++;
-        });
-
-        return count > 0 ? {
-            tempo: (total.tempo / count).toFixed(2),
-            potencia: (total.potencia / count).toFixed(2),
-            fadiga: (total.fadiga / count).toFixed(2),
-            velocidade: (total.velocidade / count).toFixed(2),
-            cadencia: (total.cadencia / count).toFixed(2),
-        } : null;
-    }
-
-    const indicadoresTUG = useMemo(() => calcularIndicadoresPorTipo('TUG'), [evaluations, sensorDataByEval]);
-    const indicadores5TSTS = useMemo(() => calcularIndicadoresPorTipo('5TSTS'), [evaluations, sensorDataByEval]);
-
-    const gruposSexo = useMemo(() => agruparPorSexo(evaluations), [evaluations]);
-    const gruposIdade = useMemo(() => agruparPorFaixaEtaria(evaluations), [evaluations]);
+    // Extract indicators from backend data
+    const indicadoresTUG = populationAnalysis?.averageIndicators?.TUG;
+    const indicadores5TSTS = populationAnalysis?.averageIndicators?.['5TSTS'];
+    
+    // Extract benchmarks from backend data
+    const gruposSexo = populationBenchmarks?.byGender || {};
+    const gruposIdade = populationBenchmarks?.byAgeGroup || {};
 
     if (loading) {
         return (
@@ -200,7 +94,6 @@ export default function PopulationAnalysisPage() {
                 <BenchmarkCharts
                     gruposSexo={gruposSexo}
                     gruposIdade={gruposIdade}
-                    sensorDataByEval={sensorDataByEval}
                 />
             </div>
         </div>

@@ -130,4 +130,10 @@ export class AuthService {
     }
     return 'Se o token for válido, a senha será atualizada.';
   }
+
+  async logout(user: any): Promise<{ success: boolean }> {
+    // No futuro: implementar blacklist de tokens
+    // Por ora, apenas retorna sucesso
+    return { success: true };
+  }
 }

@@ -1,6 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsEnum, IsNotEmpty, IsNumber, IsString, Matches } from "class-validator";
-import { CreateSensorDataDto } from "src/sensorData/dto/create-sensorData.dto";
+import { CreateSensorDataDto } from "../../sensorData/dto/create-sensorData.dto";
 
 export class CreateEvaluationDto {
 

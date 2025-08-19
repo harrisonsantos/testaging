@@ -1,7 +1,7 @@
 import { Column, DataType, HasMany, HasOne, Model, Table } from "sequelize-typescript"
-import { HealthProfessional } from "src/healthProfessional/entities/healthProfessional.entity";
-import { Patient } from "src/patient/entities/patient.entity";
-import { Researcher } from "src/researcher/entities/researcher.entity";
+import { HealthProfessional } from "../../healthProfessional/entities/healthProfessional.entity";
+import { Patient } from "../../patient/entities/patient.entity";
+import { Researcher } from "../../researcher/entities/researcher.entity";
 
 @Table
 export class Person extends Model {

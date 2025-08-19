@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PersonService } from './person.service';
 import { PersonController } from './person.controller';
+import { PersonRepository } from './person.repository';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { Person } from './entities/person.entity';
 import { AuthModule } from 'src/auth/auth.module';
@@ -14,7 +15,7 @@ import { ResearcherModule } from 'src/researcher/researcher.module';
 @Module({
   imports: [SequelizeModule.forFeature([Person, HealthProfessional, Researcher, Patient]), AuthModule, HealthProfessionalModule, ResearcherModule, PatientModule],
   controllers: [PersonController],
-  providers: [PersonService],
-  exports: [SequelizeModule]
+  providers: [PersonService, PersonRepository],
+  exports: [SequelizeModule, PersonRepository]
 })
 export class PersonModule {}

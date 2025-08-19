@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
-import { healthUnitService } from './healthUnit.service';
-import { healthUnitController } from './healthUnit.controller';
+import { HealthUnitService } from './healthUnit.service';
+import { HealthUnitController } from './healthUnit.controller';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { HealthUnit } from './entities/healthUnit.entity';
-
+ 
 @Module({
   imports: [SequelizeModule.forFeature([HealthUnit])],
-  controllers: [healthUnitController],
-  providers: [healthUnitService],
+  controllers: [HealthUnitController],
+  providers: [HealthUnitService],
 })
-export class healthUnitModule { }
+export class HealthUnitModule { }

@@ -1,7 +1,7 @@
 
 import { BelongsTo, Column, DataType, ForeignKey, HasMany, Model, Table } from "sequelize-typescript";
-import { Person } from "src/person/entities/person.entity";
-import { Evaluation } from "src/evaluation/entities/evaluation.entity";
+import { Person } from "../../person/entities/person.entity";
+import { Evaluation } from "../../evaluation/entities/evaluation.entity";
 
 @Table
 export class HealthProfessional extends Model {
